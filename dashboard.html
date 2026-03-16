@@ -1,0 +1,1175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard - Activity Tracker</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    :root {
+      --background: 0 0% 100%;
+      --foreground: 222.2 84% 4.9%;
+      --card: 0 0% 100%;
+      --card-foreground: 222.2 84% 4.9%;
+      --popover: 0 0% 100%;
+      --popover-foreground: 222.2 84% 4.9%;
+      --primary: 222.2 47.4% 11.2%;
+      --primary-foreground: 210 40% 98%;
+      --secondary: 210 40% 96.1%;
+      --secondary-foreground: 222.2 47.4% 11.2%;
+      --muted: 210 40% 96.1%;
+      --muted-foreground: 215.4 16.3% 46.9%;
+      --accent: 210 40% 96.1%;
+      --accent-foreground: 222.2 47.4% 11.2%;
+      --destructive: 0 84.2% 60.2%;
+      --destructive-foreground: 210 40% 98%;
+      --border: 214.3 31.8% 91.4%;
+      --input: 214.3 31.8% 91.4%;
+      --ring: 222.2 84% 4.9%;
+      --radius: 0.5rem;
+    }
+
+    .dark {
+      --background: 222.2 84% 4.9%;
+      --foreground: 210 40% 98%;
+      --card: 222.2 84% 4.9%;
+      --card-foreground: 210 40% 98%;
+      --popover: 222.2 84% 4.9%;
+      --popover-foreground: 210 40% 98%;
+      --primary: 210 40% 98%;
+      --primary-foreground: 222.2 47.4% 11.2%;
+      --secondary: 217.2 32.6% 17.5%;
+      --secondary-foreground: 210 40% 98%;
+      --muted: 217.2 32.6% 17.5%;
+      --muted-foreground: 215 20.2% 65.1%;
+      --accent: 217.2 32.6% 17.5%;
+      --accent-foreground: 210 40% 98%;
+      --destructive: 0 62.8% 30.6%;
+      --destructive-foreground: 210 40% 98%;
+      --border: 217.2 32.6% 17.5%;
+      --input: 217.2 32.6% 17.5%;
+      --ring: 212.7 26.8% 83.9%;
+    }
+
+    * {
+      border-color: hsl(var(--border));
+    }
+
+    body {
+      background-color: hsl(var(--background));
+      color: hsl(var(--foreground));
+    }
+
+    .bar:hover {
+      opacity: 0.8;
+    }
+
+    .pie-slice:hover {
+      filter: brightness(1.1);
+      transform: scale(1.03);
+    }
+
+    .d3-tooltip {
+      position: absolute;
+      text-align: center;
+      padding: 8px;
+      font-size: 12px;
+      background: hsl(var(--card));
+      border: 1px solid hsl(var(--border));
+      border-radius: 4px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s;
+      z-index: 1000;
+    }
+  </style>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            border: "hsl(var(--border))",
+            input: "hsl(var(--input))",
+            ring: "hsl(var(--ring))",
+            background: "hsl(var(--background))",
+            foreground: "hsl(var(--foreground))",
+            primary: {
+              DEFAULT: "hsl(var(--primary))",
+              foreground: "hsl(var(--primary-foreground))",
+            },
+            secondary: {
+              DEFAULT: "hsl(var(--secondary))",
+              foreground: "hsl(var(--secondary-foreground))",
+            },
+            destructive: {
+              DEFAULT: "hsl(var(--destructive))",
+              foreground: "hsl(var(--destructive-foreground))",
+            },
+            muted: {
+              DEFAULT: "hsl(var(--muted))",
+              foreground: "hsl(var(--muted-foreground))",
+            },
+            accent: {
+              DEFAULT: "hsl(var(--accent))",
+              foreground: "hsl(var(--accent-foreground))",
+            },
+            popover: {
+              DEFAULT: "hsl(var(--popover))",
+              foreground: "hsl(var(--popover-foreground))",
+            },
+            card: {
+              DEFAULT: "hsl(var(--card))",
+              foreground: "hsl(var(--card-foreground))",
+            },
+          },
+          borderRadius: {
+            lg: "var(--radius)",
+            md: "calc(var(--radius) - 2px)",
+            sm: "calc(var(--radius) - 4px)",
+          },
+        },
+      },
+    }
+  </script>
+</head>
+<body>
+  <div id="app"></div>
+
+  <script type="module">
+    import { mount } from 'https://esm.sh/svelte@5';
+    
+    // StatsCard component helper
+    function renderStatsCard(title, value, subtitle, color, percentage, iconSvg, clickHandler = null, cardId = null) {
+      const colors = { 
+        blue: 'bg-blue-500', 
+        purple: 'bg-purple-500', 
+        green: 'bg-green-500', 
+        orange: 'bg-orange-500', 
+        red: 'bg-red-500' 
+      };
+      const clickAttr = clickHandler ? `data-clickable="true" data-card-id="${cardId}"` : '';
+      const cursorClass = clickHandler ? 'cursor-pointer hover:shadow-lg transition-shadow' : '';
+      return `
+        <div class="rounded-lg border bg-card text-card-foreground shadow-sm ${cursorClass}" ${clickAttr}>
+          <div class="flex flex-row items-center justify-between space-y-0 pb-2 p-6">
+            <h3 class="text-sm font-medium">${title}</h3>
+            ${iconSvg}
+          </div>
+          <div class="p-6 pt-0">
+            <div class="text-2xl font-bold">${value}</div>
+            <p class="text-xs text-muted-foreground">${subtitle}</p>
+            <div class="mt-4 h-1 w-full bg-secondary rounded-full overflow-hidden">
+              <div class="h-full ${colors[color]} rounded-full" style="width: ${Math.min(percentage, 100)}%"></div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // D3 Chart Functions
+    function renderActivityChart(containerId, weeklyData) {
+      const container = document.getElementById(containerId);
+      if (!container) return;
+      
+      container.innerHTML = '';
+      
+      const margin = { top: 20, right: 20, bottom: 60, left: 50 };
+      const width = container.clientWidth - margin.left - margin.right;
+      const height = 300 - margin.top - margin.bottom;
+      
+      const svg = d3.select(`#${containerId}`)
+        .append('svg')
+        .attr('width', width + margin.left + margin.right)
+        .attr('height', height + margin.top + margin.bottom)
+        .append('g')
+        .attr('transform', `translate(${margin.left},${margin.top})`);
+      
+      // Scales
+      const x0 = d3.scaleBand()
+        .domain(weeklyData.map(d => d.day))
+        .rangeRound([0, width])
+        .paddingInner(0.1);
+      
+      const x1 = d3.scaleBand()
+        .domain(['steps', 'caloriesEaten', 'caloriesBurned'])
+        .rangeRound([0, x0.bandwidth()])
+        .padding(0.05);
+      
+      const y = d3.scaleLinear()
+        .domain([0, 12000])
+        .rangeRound([height, 0]);
+      
+      // Colors
+      const color = d3.scaleOrdinal()
+        .domain(['steps', 'caloriesEaten', 'caloriesBurned'])
+        .range(['#3b82f6', '#f97316', '#ef4444']);
+      
+      // Tooltip
+      const tooltip = d3.select('body').append('div')
+        .attr('class', 'd3-tooltip');
+      
+      // Bars
+      const dayGroups = svg.selectAll('.day-group')
+        .data(weeklyData)
+        .enter().append('g')
+        .attr('class', 'day-group')
+        .attr('transform', d => `translate(${x0(d.day)},0)`);
+      
+      ['steps', 'caloriesEaten', 'caloriesBurned'].forEach(key => {
+        dayGroups.append('rect')
+          .attr('class', 'bar')
+          .attr('x', x1(key))
+          .attr('y', d => y(d[key]))
+          .attr('width', x1.bandwidth())
+          .attr('height', d => height - y(d[key]))
+          .attr('fill', color(key))
+          .attr('rx', 4)
+          .on('mouseover', function(event, d) {
+            tooltip.transition().duration(200).style('opacity', .9);
+            tooltip.html(`${key}: ${d[key].toLocaleString()}`)
+              .style('left', (event.pageX + 5) + 'px')
+              .style('top', (event.pageY - 28) + 'px');
+          })
+          .on('mouseout', function(d) {
+            tooltip.transition().duration(500).style('opacity', 0);
+          });
+      });
+      
+      // X Axis
+      svg.append('g')
+        .attr('transform', `translate(0,${height})`)
+        .call(d3.axisBottom(x0))
+        .selectAll('text')
+        .style('font-size', '12px')
+        .style('fill', 'hsl(var(--muted-foreground))');
+      
+      // Y Axis
+      svg.append('g')
+        .call(d3.axisLeft(y).ticks(5))
+        .style('font-size', '12px')
+        .style('color', 'hsl(var(--muted-foreground))');
+      
+      // Remove axis lines for cleaner look
+      svg.selectAll('.domain').attr('stroke', 'hsl(var(--border))');
+      svg.selectAll('.tick line').attr('stroke', 'hsl(var(--border))');
+    }
+
+    function renderBarChartModal(containerId, data, config) {
+      const container = document.getElementById(containerId);
+      if (!container) return;
+      
+      container.innerHTML = '';
+      
+      const margin = { top: 40, right: 30, bottom: 60, left: 70 };
+      const width = container.clientWidth - margin.left - margin.right;
+      const height = container.clientHeight - margin.top - margin.bottom;
+      
+      const svg = d3.select(`#${containerId}`)
+        .append('svg')
+        .attr('width', container.clientWidth)
+        .attr('height', container.clientHeight)
+        .append('g')
+        .attr('transform', `translate(${margin.left},${margin.top})`);
+      
+      const values = data.map(config.getValue);
+      const maxValue = Math.max(...values);
+      
+      const x = d3.scaleBand()
+        .domain(data.map(d => d.day))
+        .range([0, width])
+        .padding(0.3);
+      
+      const y = d3.scaleLinear()
+        .domain([0, maxValue])
+        .range([height, 0]);
+      
+      // Grid lines
+      svg.append('g')
+        .attr('class', 'grid')
+        .call(d3.axisLeft(y)
+          .tickSize(-width)
+          .tickFormat('')
+        )
+        .style('stroke-dasharray', '3,3')
+        .style('stroke-opacity', 0.3);
+      
+      svg.selectAll('.grid line').attr('stroke', 'hsl(var(--muted-foreground))');
+      svg.selectAll('.grid .domain').remove();
+      
+      // Tooltip
+      const tooltip = d3.select('body').append('div')
+        .attr('class', 'd3-tooltip');
+      
+      // Bars with animation
+      const bars = svg.selectAll('.bar')
+        .data(data)
+        .enter().append('rect')
+        .attr('class', 'bar')
+        .attr('x', d => x(d.day))
+        .attr('width', x.bandwidth())
+        .attr('y', height)
+        .attr('height', 0)
+        .attr('fill', config.color === 'bg-green-500' ? '#22c55e' : 
+                     config.color === 'bg-orange-500' ? '#f97316' : '#ef4444')
+        .attr('rx', 6)
+        .on('mouseover', function(event, d) {
+          const value = config.getValue(d);
+          tooltip.transition().duration(200).style('opacity', .9);
+          tooltip.html(`${d.day}: ${value.toLocaleString()} ${config.unit}`)
+            .style('left', (event.pageX + 5) + 'px')
+            .style('top', (event.pageY - 28) + 'px');
+          d3.select(this).attr('opacity', 0.8);
+        })
+        .on('mouseout', function(d) {
+          tooltip.transition().duration(500).style('opacity', 0);
+          d3.select(this).attr('opacity', 1);
+        });
+      
+      // Animate bars
+      bars.transition()
+        .duration(800)
+        .delay((d, i) => i * 100)
+        .attr('y', d => y(config.getValue(d)))
+        .attr('height', d => height - y(config.getValue(d)));
+      
+      // Value labels on bars
+      svg.selectAll('.label')
+        .data(data)
+        .enter().append('text')
+        .attr('class', 'label')
+        .attr('x', d => x(d.day) + x.bandwidth() / 2)
+        .attr('y', d => y(config.getValue(d)) - 5)
+        .attr('text-anchor', 'middle')
+        .text(d => config.getValue(d).toLocaleString())
+        .style('font-size', '12px')
+        .style('font-weight', '600')
+        .style('fill', 'hsl(var(--foreground))')
+        .style('opacity', 0)
+        .transition()
+        .duration(800)
+        .delay((d, i) => i * 100 + 400)
+        .style('opacity', 1);
+      
+      // X Axis
+      svg.append('g')
+        .attr('transform', `translate(0,${height})`)
+        .call(d3.axisBottom(x))
+        .selectAll('text')
+        .style('font-size', '13px')
+        .style('font-weight', '500')
+        .style('fill', 'hsl(var(--muted-foreground))');
+      
+      // Y Axis
+      svg.append('g')
+        .call(d3.axisLeft(y).ticks(5).tickFormat(d => d + ' ' + config.unit))
+        .style('font-size', '12px')
+        .style('color', 'hsl(var(--muted-foreground))');
+      
+      svg.selectAll('.domain').attr('stroke', 'hsl(var(--border))');
+      svg.selectAll('.tick line').attr('stroke', 'hsl(var(--border))');
+    }
+
+    function renderPieChartModal(containerId, data, config) {
+      const container = document.getElementById(containerId);
+      if (!container) return;
+      
+      container.innerHTML = '';
+      
+      const width = container.clientWidth;
+      const height = container.clientHeight;
+      const radius = Math.min(width, height) / 2 - 20;
+      
+      const svg = d3.select(`#${containerId}`)
+        .append('svg')
+        .attr('width', width)
+        .attr('height', height)
+        .append('g')
+        .attr('transform', `translate(${width / 2},${height / 2})`);
+      
+      const pie = d3.pie()
+        .value(d => d.value)
+        .sort(null);
+      
+      const arc = d3.arc()
+        .innerRadius(radius * 0.4)
+        .outerRadius(radius);
+      
+      const arcHover = d3.arc()
+        .innerRadius(radius * 0.4)
+        .outerRadius(radius * 1.05);
+      
+      const total = data.reduce((a, b) => a + b.value, 0);
+      
+      // Tooltip
+      const tooltip = d3.select('body').append('div')
+        .attr('class', 'd3-tooltip');
+      
+      // Center text group
+      const centerText = svg.append('g')
+        .attr('class', 'center-text');
+      
+      const valueText = centerText.append('text')
+        .attr('text-anchor', 'middle')
+        .attr('dy', '-0.2em')
+        .style('font-size', '18px')
+        .style('font-weight', 'bold')
+        .style('fill', 'hsl(var(--foreground))')
+        .text(total.toLocaleString());
+      
+      const labelText = centerText.append('text')
+        .attr('text-anchor', 'middle')
+        .attr('dy', '1.2em')
+        .style('font-size', '12px')
+        .style('fill', 'hsl(var(--muted-foreground))')
+        .text('Total');
+      
+      // Pie slices
+      const arcs = svg.selectAll('.arc')
+        .data(pie(data))
+        .enter().append('g')
+        .attr('class', 'arc');
+      
+      const paths = arcs.append('path')
+        .attr('fill', d => d.data.color)
+        .attr('stroke', 'white')
+        .attr('stroke-width', 2)
+        .attr('d', arc)
+        .style('cursor', 'pointer')
+        .style('opacity', 0)
+        .on('mouseover', function(event, d) {
+          d3.select(this)
+            .transition()
+            .duration(200)
+            .attr('d', arcHover)
+            .style('filter', 'brightness(1.1)');
+          
+          const percentage = ((d.data.value / total) * 100).toFixed(1);
+          valueText.text(d.data.value.toLocaleString());
+          labelText.text(`${d.data.name} (${percentage}%)`);
+          
+          tooltip.transition().duration(200).style('opacity', .9);
+          tooltip.html(`${d.data.name}: ${d.data.value.toLocaleString()} (${percentage}%)`)
+            .style('left', (event.pageX + 5) + 'px')
+            .style('top', (event.pageY - 28) + 'px');
+          
+          // Update info panel
+          const infoPanel = document.getElementById('pie-info-panel');
+          if (infoPanel) {
+            infoPanel.innerHTML = `
+              <div class="text-center lg:text-left">
+                <div class="flex items-center gap-2 mb-3">
+                  <div class="w-6 h-6 rounded" style="background-color: ${d.data.color}"></div>
+                  <h3 class="text-xl font-bold">${d.data.name}</h3>
+                </div>
+                <p class="text-4xl font-bold" style="color: ${d.data.color}">${d.data.value.toLocaleString()}</p>
+                <p class="text-lg text-muted-foreground mt-1">${percentage}% of total</p>
+                <div class="mt-4 pt-4 border-t">
+                  <p class="text-sm text-muted-foreground">Click slice for more details</p>
+                </div>
+              </div>
+            `;
+          }
+        })
+        .on('mouseout', function(d) {
+          d3.select(this)
+            .transition()
+            .duration(200)
+            .attr('d', arc)
+            .style('filter', 'brightness(1)');
+          
+          valueText.text(total.toLocaleString());
+          labelText.text('Total');
+          
+          tooltip.transition().duration(500).style('opacity', 0);
+          
+          // Reset info panel
+          const infoPanel = document.getElementById('pie-info-panel');
+          if (infoPanel) {
+            infoPanel.innerHTML = `
+              <div class="text-center lg:text-left">
+                <p class="text-sm text-muted-foreground mb-2">Hover over a slice to see details</p>
+                <p class="text-4xl font-bold ${config.textColor}">${total.toLocaleString()}</p>
+                <p class="text-sm text-muted-foreground mt-1">Total</p>
+              </div>
+            `;
+          }
+        });
+      
+      // Animate slices
+      paths.transition()
+        .duration(800)
+        .delay((d, i) => i * 150)
+        .style('opacity', 1);
+      
+      return data.map((d, i) => ({
+        ...d,
+        percentage: ((d.value / total) * 100).toFixed(1),
+        index: i
+      }));
+    }
+
+    // Dashboard App using Svelte 5 runes pattern
+    const DashboardApp = {
+      setup() {
+        let state = {
+          darkMode: false,
+          activeGraph: null,
+          activePieChart: null,
+          stats: {
+            shows: 12,
+            showsChange: 3,
+            songs: 2847,
+            songsChange: 12,
+            steps: 8432,
+            caloriesEaten: 2150,
+            caloriesBurned: 1850,
+            caloriesBurnedChange: 320
+          },
+          weeklyData: [
+            { day: 'Mon', steps: 6500, caloriesEaten: 2100, caloriesBurned: 1500 },
+            { day: 'Tue', steps: 8200, caloriesEaten: 2300, caloriesBurned: 1800 },
+            { day: 'Wed', steps: 10500, caloriesEaten: 1950, caloriesBurned: 2200 },
+            { day: 'Thu', steps: 7800, caloriesEaten: 2500, caloriesBurned: 1600 },
+            { day: 'Fri', steps: 9200, caloriesEaten: 2200, caloriesBurned: 1900 },
+            { day: 'Sat', steps: 11200, caloriesEaten: 2800, caloriesBurned: 2400 },
+            { day: 'Sun', steps: 8432, caloriesEaten: 2150, caloriesBurned: 1850 }
+          ],
+          recentActivity: [
+            { type: 'exercise', name: 'Morning Run', time: '2 hours ago', value: '450 cal' },
+            { type: 'music', name: 'Lo-Fi Beats Playlist', time: '3 hours ago', value: '47 songs' },
+            { type: 'movie', name: 'The Matrix', time: '5 hours ago', value: '2h 16m' },
+            { type: 'meal', name: 'Lunch - Salad Bowl', time: '6 hours ago', value: '420 cal' },
+            { type: 'exercise', name: 'Yoga Session', time: 'Yesterday', value: '180 cal' }
+          ],
+          topGenres: [
+            { name: 'Drama', percentage: 35 },
+            { name: 'Action', percentage: 25 },
+            { name: 'Comedy', percentage: 20 },
+            { name: 'Sci-Fi', percentage: 15 },
+            { name: 'Documentary', percentage: 5 }
+          ],
+          weeklyGoals: [
+            { name: 'Steps', current: 58432, target: 70000 },
+            { name: 'Workouts', current: 4, target: 5 },
+            { name: 'Shows', current: 12, target: 15 },
+            { name: 'Songs', current: 2847, target: 3000 }
+          ],
+          mediaData: {
+            songs: {
+              byGenre: [
+                { name: 'Rock', value: 847, color: '#ef4444' },
+                { name: 'Pop', value: 723, color: '#3b82f6' },
+                { name: 'Hip Hop', value: 534, color: '#8b5cf6' },
+                { name: 'Electronic', value: 412, color: '#10b981' },
+                { name: 'Jazz', value: 231, color: '#f59e0b' },
+                { name: 'Classical', value: 100, color: '#6b7280' }
+              ]
+            },
+            shows: {
+              byGenre: [
+                { name: 'Drama', value: 4, color: '#ef4444' },
+                { name: 'Comedy', value: 3, color: '#3b82f6' },
+                { name: 'Action', value: 2, color: '#8b5cf6' },
+                { name: 'Sci-Fi', value: 2, color: '#10b981' },
+                { name: 'Documentary', value: 1, color: '#f59e0b' }
+              ]
+            }
+          }
+        };
+
+        const subscribers = new Set();
+        
+        function subscribe(callback) {
+          subscribers.add(callback);
+          return () => subscribers.delete(callback);
+        }
+
+        function notify() {
+          subscribers.forEach(cb => cb(state));
+        }
+
+        function toggleTheme() {
+          state.darkMode = !state.darkMode;
+          document.documentElement.classList.toggle('dark', state.darkMode);
+          notify();
+        }
+
+        function showGraph(graphType) {
+          state.activeGraph = graphType;
+          state.activePieChart = null;
+          notify();
+        }
+
+        function showPieChart(pieType) {
+          state.activePieChart = pieType;
+          state.activeGraph = null;
+          notify();
+        }
+
+        function closeGraph() {
+          state.activeGraph = null;
+          state.activePieChart = null;
+          notify();
+        }
+
+        function getState() {
+          return state;
+        }
+
+        return { subscribe, getState, toggleTheme, showGraph, showPieChart, closeGraph };
+      },
+
+      render(state) {
+        const { darkMode, stats, weeklyData, recentActivity, topGenres, weeklyGoals, activeGraph, activePieChart, mediaData } = state;
+
+        let graphModal = '';
+        if (activeGraph) {
+          graphModal = this.renderGraphModal(activeGraph, weeklyData);
+        } else if (activePieChart) {
+          graphModal = this.renderPieChartModal(activePieChart, mediaData);
+        }
+
+        return `
+          <div class="min-h-screen bg-background">
+            <!-- Header -->
+            <header class="border-b bg-card">
+              <div class="flex h-16 items-center px-4 md:px-8">
+                <div class="flex items-center gap-2 font-bold text-xl">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-primary"><rect width="7" height="9" x="2" y="2" rx="1"/><rect width="7" height="5" x="10" y="2" rx="1"/><rect width="7" height="9" x="4" y="11" rx="1"/><rect width="7" height="5" x="14" y="11" rx="1"/></svg>
+                  <span>Activity Dashboard</span>
+                </div>
+                <div class="ml-auto flex items-center gap-4">
+                  <button 
+                    id="theme-toggle"
+                    class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 w-10"
+                  >
+                    ${darkMode ? 
+                      `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>` :
+                      `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>`
+                    }
+                  </button>
+                  <div class="relative">
+                    <img 
+                      src="https://api.dicebear.com/7.x/avataaars/svg?seed=Felix" 
+                      alt="User" 
+                      class="h-8 w-8 rounded-full border"
+                    />
+                  </div>
+                </div>
+              </div>
+            </header>
+
+            <div class="flex">
+              <!-- Sidebar -->
+              <aside class="hidden md:block w-64 border-r bg-card min-h-[calc(100vh-4rem)]">
+                <nav class="flex flex-col gap-2 p-4">
+                  <a href="#" class="flex items-center gap-3 rounded-lg bg-primary px-3 py-2 text-primary-foreground transition-all hover:text-primary-foreground">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="9" x="2" y="2" rx="1"/><rect width="7" height="5" x="10" y="2" rx="1"/><rect width="7" height="9" x="4" y="11" rx="1"/><rect width="7" height="5" x="14" y="11" rx="1"/></svg>
+                    Overview
+                  </a>
+                  <a href="#" class="flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:bg-accent hover:text-accent-foreground">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg>
+                    Analytics
+                  </a>
+                  <a href="#" class="flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:bg-accent hover:text-accent-foreground">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                    Reports
+                  </a>
+                  <a href="#" class="flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:bg-accent hover:text-accent-foreground">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                    Profile
+                  </a>
+                </nav>
+              </aside>
+
+              <!-- Main Content -->
+              <main class="flex-1 p-4 md:p-8">
+                <div class="flex items-center justify-between mb-8">
+                  <div>
+                    <h1 class="text-3xl font-bold tracking-tight">Dashboard</h1>
+                    <p class="text-muted-foreground">Track your daily activities and health metrics.</p>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <span class="text-sm text-muted-foreground">${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                  </div>
+                </div>
+
+                <!-- Stats Grid -->
+                <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 mb-8">
+                  ${renderStatsCard('Shows & Movies', stats.shows, `+${stats.showsChange} from last week`, 'blue', (stats.shows / 50) * 100, 
+                    `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-muted-foreground"><rect width="20" height="15" x="2" y="7" rx="2" ry="2"/><polyline points="17 2 12 7 7 2"/></svg>`, true, 'shows')}
+                  
+                  ${renderStatsCard('Songs Played', stats.songs.toLocaleString(), `+${stats.songsChange}% from yesterday`, 'purple', (stats.songs / 500) * 100,
+                    `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-muted-foreground"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`, true, 'songs')}
+                  
+                  ${renderStatsCard('Steps Taken', stats.steps.toLocaleString(), 'Goal: 10,000/day', 'green', (stats.steps / 10000) * 100,
+                    `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-muted-foreground"><line x1="22" x2="2" y1="12" y2="12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" x2="6.01" y1="16" y2="16"/><line x1="10" x2="10.01" y1="16" y2="16"/></svg>`, true, 'steps')}
+                  
+                  ${renderStatsCard('Calories Eaten', stats.caloriesEaten.toLocaleString(), 'Target: 2,500/day', 'orange', (stats.caloriesEaten / 2500) * 100,
+                    `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-muted-foreground"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>`, true, 'caloriesEaten')}
+                  
+                  ${renderStatsCard('Calories Burned', stats.caloriesBurned.toLocaleString(), `+${stats.caloriesBurnedChange} vs yesterday`, 'red', (stats.caloriesBurned / 3000) * 100,
+                    `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-muted-foreground"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>`, true, 'caloriesBurned')}
+                </div>
+
+                <!-- Charts Section -->
+                <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-7 mb-8">
+                  <!-- Activity Overview Chart -->
+                  <div class="col-span-4 rounded-lg border bg-card text-card-foreground shadow-sm">
+                    <div class="flex flex-col space-y-1.5 p-6">
+                      <h3 class="text-lg font-semibold leading-none tracking-tight">Activity Overview</h3>
+                      <p class="text-sm text-muted-foreground">Your activity trends over the past 7 days</p>
+                    </div>
+                    <div class="p-6 pt-0">
+                      <div id="activity-chart" style="width: 100%; height: 300px;"></div>
+                      <div class="flex items-center justify-center gap-6 mt-4">
+                        <div class="flex items-center gap-2">
+                          <div class="w-3 h-3 rounded-full bg-blue-500"></div>
+                          <span class="text-xs text-muted-foreground">Steps</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                          <div class="w-3 h-3 rounded-full bg-orange-500"></div>
+                          <span class="text-xs text-muted-foreground">Calories Eaten</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                          <div class="w-3 h-3 rounded-full bg-red-500"></div>
+                          <span class="text-xs text-muted-foreground">Calories Burned</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Recent Activity -->
+                  <div class="col-span-3 rounded-lg border bg-card text-card-foreground shadow-sm">
+                    <div class="flex flex-col space-y-1.5 p-6">
+                      <h3 class="text-lg font-semibold leading-none tracking-tight">Recent Activity</h3>
+                      <p class="text-sm text-muted-foreground">Latest actions from today</p>
+                    </div>
+                    <div class="p-6 pt-0">
+                      <div class="space-y-4">
+                        ${recentActivity.map(activity => {
+                          let icon = '';
+                          let color = '';
+                          if (activity.type === 'movie') { icon = '<rect width="20" height="15" x="2" y="7" rx="2" ry="2"/><polyline points="17 2 12 7 7 2"/>'; color = 'blue'; }
+                          else if (activity.type === 'music') { icon = '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>'; color = 'purple'; }
+                          else if (activity.type === 'exercise') { icon = '<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>'; color = 'red'; }
+                          else { icon = '<line x1="22" x2="2" y1="12" y2="12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" x2="6.01" y1="16" y2="16"/><line x1="10" x2="10.01" y1="16" y2="16"/>'; color = 'green'; }
+                          return `
+                            <div class="flex items-center gap-4">
+                              <div class="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-${color}-500">${icon}</svg>
+                              </div>
+                              <div class="flex-1 min-w-0">
+                                <p class="text-sm font-medium truncate">${activity.name}</p>
+                                <p class="text-xs text-muted-foreground">${activity.time}</p>
+                              </div>
+                              <div class="text-sm font-medium">
+                                ${activity.value}
+                              </div>
+                            </div>
+                          `;
+                        }).join('')}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Bottom Stats -->
+                <div class="grid gap-4 md:grid-cols-3">
+                  <div class="rounded-lg border bg-card text-card-foreground shadow-sm">
+                    <div class="flex flex-col space-y-1.5 p-6">
+                      <h3 class="text-lg font-semibold leading-none tracking-tight">Top Genres</h3>
+                    </div>
+                    <div class="p-6 pt-0">
+                      <div class="space-y-2">
+                        ${topGenres.map(genre => `
+                          <div class="flex items-center justify-between">
+                            <span class="text-sm">${genre.name}</span>
+                            <div class="flex items-center gap-2">
+                              <div class="h-2 w-24 bg-secondary rounded-full overflow-hidden">
+                                <div class="h-full bg-primary rounded-full" style="width: ${genre.percentage}%"></div>
+                              </div>
+                              <span class="text-xs text-muted-foreground w-8">${genre.percentage}%</span>
+                            </div>
+                          </div>
+                        `).join('')}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="rounded-lg border bg-card text-card-foreground shadow-sm">
+                    <div class="flex flex-col space-y-1.5 p-6">
+                      <h3 class="text-lg font-semibold leading-none tracking-tight">Weekly Goals</h3>
+                    </div>
+                    <div class="p-6 pt-0">
+                      <div class="space-y-4">
+                        ${weeklyGoals.map(goal => `
+                          <div>
+                            <div class="flex items-center justify-between mb-1">
+                              <span class="text-sm">${goal.name}</span>
+                              <span class="text-xs text-muted-foreground">${goal.current}/${goal.target}</span>
+                            </div>
+                            <div class="h-2 w-full bg-secondary rounded-full overflow-hidden">
+                              <div 
+                                class="h-full rounded-full ${goal.current >= goal.target ? 'bg-green-500' : 'bg-primary'}"
+                                style="width: ${Math.min((goal.current / goal.target) * 100, 100)}%"
+                              ></div>
+                            </div>
+                          </div>
+                        `).join('')}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="rounded-lg border bg-card text-card-foreground shadow-sm">
+                    <div class="flex flex-col space-y-1.5 p-6">
+                      <h3 class="text-lg font-semibold leading-none tracking-tight">Quick Actions</h3>
+                    </div>
+                    <div class="p-6 pt-0">
+                      <div class="grid grid-cols-2 gap-2">
+                        <button class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 py-2">
+                          Log Meal
+                        </button>
+                        <button class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 py-2">
+                          Add Workout
+                        </button>
+                        <button class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-4 py-2">
+                          Log Show
+                        </button>
+                        <button class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-4 py-2">
+                          Add Steps
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </main>
+            </div>
+          </div>
+          ${graphModal}
+        `;
+      },
+
+      renderGraphModal(activeGraph, weeklyData) {
+        const config = {
+          steps: {
+            title: 'Steps Taken',
+            subtitle: 'Weekly Steps Trend',
+            color: 'bg-green-500',
+            textColor: 'text-green-500',
+            bgColor: 'bg-green-500/10',
+            getValue: (day) => day.steps,
+            maxValue: 12000,
+            unit: 'steps',
+            d3Color: '#22c55e',
+            icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" x2="2" y1="12" y2="12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" x2="6.01" y1="16" y2="16"/><line x1="10" x2="10.01" y1="16" y2="16"/></svg>'
+          },
+          caloriesEaten: {
+            title: 'Calories Eaten',
+            subtitle: 'Weekly Calories Consumed',
+            color: 'bg-orange-500',
+            textColor: 'text-orange-500',
+            bgColor: 'bg-orange-500/10',
+            getValue: (day) => day.caloriesEaten,
+            maxValue: 3000,
+            unit: 'cal',
+            d3Color: '#f97316',
+            icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>'
+          },
+          caloriesBurned: {
+            title: 'Calories Burned',
+            subtitle: 'Weekly Calories Burned',
+            color: 'bg-red-500',
+            textColor: 'text-red-500',
+            bgColor: 'bg-red-500/10',
+            getValue: (day) => day.caloriesBurned,
+            maxValue: 2500,
+            unit: 'cal',
+            d3Color: '#ef4444',
+            icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>'
+          }
+        };
+
+        const graphConfig = config[activeGraph];
+        const values = weeklyData.map(graphConfig.getValue);
+        const total = values.reduce((a, b) => a + b, 0);
+        const avg = Math.round(total / values.length);
+        const max = Math.max(...values);
+
+        return `
+          <div id="graph-modal" class="fixed inset-0 z-50 bg-background/95 backdrop-blur-sm animate-in fade-in duration-300">
+            <div class="h-full w-full flex flex-col p-4 md:p-8 animate-in slide-in-from-bottom-10 duration-500">
+              <!-- Header -->
+              <div class="flex items-center justify-between mb-8">
+                <div class="flex items-center gap-4">
+                  <div class="h-12 w-12 rounded-full ${graphConfig.bgColor} flex items-center justify-center ${graphConfig.textColor}">
+                    ${graphConfig.icon}
+                  </div>
+                  <div>
+                    <h2 class="text-2xl font-bold">${graphConfig.title}</h2>
+                    <p class="text-muted-foreground">${graphConfig.subtitle}</p>
+                  </div>
+                </div>
+                <button id="close-graph" class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 w-10">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
+              </div>
+
+              <!-- Chart Container -->
+              <div class="flex-1 flex flex-col min-h-0">
+                <div id="modal-chart-container" class="flex-1 bg-card rounded-lg border relative" style="min-height: 400px;"></div>
+
+                <!-- Stats Summary -->
+                <div class="grid grid-cols-3 gap-4 mt-6">
+                  <div class="bg-card rounded-lg border p-4 text-center">
+                    <p class="text-sm text-muted-foreground mb-1">Total</p>
+                    <p class="text-2xl font-bold ${graphConfig.textColor}">${total.toLocaleString()}</p>
+                    <p class="text-xs text-muted-foreground">${graphConfig.unit}</p>
+                  </div>
+                  <div class="bg-card rounded-lg border p-4 text-center">
+                    <p class="text-sm text-muted-foreground mb-1">Average</p>
+                    <p class="text-2xl font-bold ${graphConfig.textColor}">${avg.toLocaleString()}</p>
+                    <p class="text-xs text-muted-foreground">${graphConfig.unit}/day</p>
+                  </div>
+                  <div class="bg-card rounded-lg border p-4 text-center">
+                    <p class="text-sm text-muted-foreground mb-1">Peak</p>
+                    <p class="text-2xl font-bold ${graphConfig.textColor}">${max.toLocaleString()}</p>
+                    <p class="text-xs text-muted-foreground">${graphConfig.unit}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      },
+
+      renderPieChartModal(activePieChart, mediaData) {
+        const pieConfig = {
+          songs: {
+            title: 'Songs Played',
+            subtitle: 'Music by Genre',
+            icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>',
+            textColor: 'text-purple-500',
+            bgColor: 'bg-purple-500/10',
+            data: mediaData.songs.byGenre,
+            total: mediaData.songs.byGenre.reduce((a, b) => a + b.value, 0)
+          },
+          shows: {
+            title: 'Shows & Movies',
+            subtitle: 'Content by Genre',
+            icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="15" x="2" y="7" rx="2" ry="2"/><polyline points="17 2 12 7 7 2"/></svg>',
+            textColor: 'text-blue-500',
+            bgColor: 'bg-blue-500/10',
+            data: mediaData.shows.byGenre,
+            total: mediaData.shows.byGenre.reduce((a, b) => a + b.value, 0)
+          }
+        };
+
+        const config = pieConfig[activePieChart];
+
+        return `
+          <div id="pie-modal" class="fixed inset-0 z-50 bg-background/95 backdrop-blur-sm animate-in fade-in duration-300">
+            <div class="h-full w-full flex flex-col p-4 md:p-8 animate-in slide-in-from-bottom-10 duration-500">
+              <!-- Header -->
+              <div class="flex items-center justify-between mb-6">
+                <div class="flex items-center gap-4">
+                  <div class="h-12 w-12 rounded-full ${config.bgColor} flex items-center justify-center ${config.textColor}">
+                    ${config.icon}
+                  </div>
+                  <div>
+                    <h2 class="text-2xl font-bold">${config.title}</h2>
+                    <p class="text-muted-foreground">${config.subtitle}</p>
+                  </div>
+                </div>
+                <button id="close-pie" class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 w-10">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
+              </div>
+
+              <!-- Main Content -->
+              <div class="flex-1 flex flex-col lg:flex-row gap-8 min-h-0">
+                <!-- Left: Info Panel -->
+                <div id="pie-info-panel" class="lg:w-80 bg-card rounded-lg border p-6 flex flex-col justify-center">
+                  <div class="text-center lg:text-left">
+                    <p class="text-sm text-muted-foreground mb-2">Hover over a slice to see details</p>
+                    <p class="text-4xl font-bold ${config.textColor}">${config.total.toLocaleString()}</p>
+                    <p class="text-sm text-muted-foreground mt-1">Total ${activePieChart}</p>
+                  </div>
+                </div>
+
+                <!-- Right: Pie Chart -->
+                <div class="flex-1 flex items-center justify-center bg-card rounded-lg border p-6">
+                  <div id="pie-chart-container" style="width: 100%; height: 100%; max-width: 400px; max-height: 400px;"></div>
+                </div>
+              </div>
+
+              <!-- Legend -->
+              <div id="pie-legend" class="mt-6 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                ${config.data.map((item, index) => `
+                  <div class="flex items-center gap-2 p-2 rounded-lg bg-card border hover:bg-accent/50 transition-colors cursor-pointer legend-item" data-slice-index="${index}">
+                    <div class="w-4 h-4 rounded" style="background-color: ${item.color}"></div>
+                    <div class="flex-1 min-w-0">
+                      <p class="text-sm font-medium truncate">${item.name}</p>
+                      <p class="text-xs text-muted-foreground">${item.value.toLocaleString()}</p>
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          </div>
+        `;
+      },
+
+      mount(target) {
+        const { subscribe, getState, toggleTheme, showGraph, showPieChart, closeGraph } = this.setup();
+        
+        const render = () => {
+          const state = getState();
+          target.innerHTML = this.render(state);
+          
+          // Attach event listeners after render
+          const toggleBtn = target.querySelector('#theme-toggle');
+          if (toggleBtn) {
+            toggleBtn.addEventListener('click', toggleTheme);
+          }
+
+          // Attach click handlers to clickable stat cards
+          const clickableCards = target.querySelectorAll('[data-clickable="true"]');
+          clickableCards.forEach(card => {
+            card.addEventListener('click', () => {
+              const cardId = card.getAttribute('data-card-id');
+              if (cardId) {
+                if (cardId === 'songs' || cardId === 'shows') {
+                  showPieChart(cardId);
+                } else {
+                  showGraph(cardId);
+                }
+              }
+            });
+          });
+
+          // Attach close handler to graph modal
+          const closeGraphBtn = target.querySelector('#close-graph');
+          if (closeGraphBtn) {
+            closeGraphBtn.addEventListener('click', closeGraph);
+          }
+
+          // Attach close handler to pie modal
+          const closePieBtn = target.querySelector('#close-pie');
+          if (closePieBtn) {
+            closePieBtn.addEventListener('click', closeGraph);
+          }
+
+          // Render Activity Overview Chart using D3
+          setTimeout(() => {
+            const activityChartContainer = document.getElementById('activity-chart');
+            if (activityChartContainer && !state.activeGraph && !state.activePieChart) {
+              renderActivityChart('activity-chart', state.weeklyData);
+            }
+          }, 0);
+
+          // Render Modal Bar Chart using D3
+          if (state.activeGraph) {
+            setTimeout(() => {
+              const chartContainer = document.getElementById('modal-chart-container');
+              if (chartContainer) {
+                const config = {
+                  steps: {
+                    color: 'bg-green-500',
+                    getValue: (day) => day.steps,
+                    unit: 'steps',
+                    d3Color: '#22c55e'
+                  },
+                  caloriesEaten: {
+                    color: 'bg-orange-500',
+                    getValue: (day) => day.caloriesEaten,
+                    unit: 'cal',
+                    d3Color: '#f97316'
+                  },
+                  caloriesBurned: {
+                    color: 'bg-red-500',
+                    getValue: (day) => day.caloriesBurned,
+                    unit: 'cal',
+                    d3Color: '#ef4444'
+                  }
+                }[state.activeGraph];
+                
+                renderBarChartModal('modal-chart-container', state.weeklyData, config);
+              }
+            }, 50);
+          }
+
+          // Render Pie Chart using D3
+          if (state.activePieChart) {
+            setTimeout(() => {
+              const pieContainer = document.getElementById('pie-chart-container');
+              if (pieContainer) {
+                const config = {
+                  songs: {
+                    textColor: 'text-purple-500',
+                    data: state.mediaData.songs.byGenre
+                  },
+                  shows: {
+                    textColor: 'text-blue-500',
+                    data: state.mediaData.shows.byGenre
+                  }
+                }[state.activePieChart];
+                
+                const slices = renderPieChartModal('pie-chart-container', config.data, config);
+                
+                // Add hover handlers for legend items
+                const legendItems = document.querySelectorAll('.legend-item');
+                const pieSlices = d3.selectAll('.arc path');
+                
+                legendItems.forEach((item, index) => {
+                  item.addEventListener('mouseenter', () => {
+                    const slice = pieSlices.nodes()[index];
+                    if (slice) {
+                      const event = new MouseEvent('mouseover', {
+                        bubbles: true,
+                        cancelable: true,
+                        view: window
+                      });
+                      slice.dispatchEvent(event);
+                    }
+                  });
+                  
+                  item.addEventListener('mouseleave', () => {
+                    const slice = pieSlices.nodes()[index];
+                    if (slice) {
+                      const event = new MouseEvent('mouseout', {
+                        bubbles: true,
+                        cancelable: true,
+                        view: window
+                      });
+                      slice.dispatchEvent(event);
+                    }
+                  });
+                });
+              }
+            }, 50);
+          }
+
+          // Add Escape key handler for closing modals
+          if (state.activeGraph || state.activePieChart) {
+            const handleEscape = (e) => {
+              if (e.key === 'Escape') {
+                closeGraph();
+                document.removeEventListener('keydown', handleEscape);
+              }
+            };
+            document.addEventListener('keydown', handleEscape);
+          }
+        };
+
+        subscribe(render);
+        render();
+      }
+    };
+
+    DashboardApp.mount(document.getElementById('app'));
+  </script>
+</body>
+</html>
